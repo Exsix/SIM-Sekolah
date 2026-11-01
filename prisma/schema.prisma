@@ -1,0 +1,658 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------------------
+// 1. MANAJEMEN PENGGUNA, PERAN, & AKSES (RBAC)
+// ----------------------------------------------------
+
+enum RoleName {
+  SUPER_ADMIN
+  ADMIN
+  KEPALA_SEKOLAH
+  GURU
+  WALI_KELAS
+  PETUGAS_PERPUSTAKAAN
+  SISWA
+  ORANG_TUA
+}
+
+model Role {
+  id              String           @id @default(uuid())
+  name            RoleName         @unique
+  description     String?
+  users           User[]
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  module          String
+  action          String
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  username      String         @unique
+  email         String?        @unique
+  password      String
+  roleId        String
+  role          Role           @relation(fields: [roleId], references: [id])
+  isActive      Boolean        @default(true)
+  lastLogin     DateTime?
+  activityLogs  ActivityLog[]
+  notifications Notification[]
+  student       Student?
+  teacher       Teacher?
+  parent        Parent?
+  libraryMember LibraryMember?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("users")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  roleName    String?
+  module      String
+  action      String
+  recordId    String?
+  description String
+  oldData     Json?
+  newData     Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@map("activity_logs")
+}
+
+// ----------------------------------------------------
+// 2. IDENTITAS SEKOLAH & TAHUN AJARAN
+// ----------------------------------------------------
+
+enum Semester {
+  GANJIL
+  GENAP
+}
+
+model SchoolSetting {
+  id               String   @id @default(uuid())
+  name             String
+  npsn             String?
+  logoUrl          String?
+  address          String?
+  phone            String?
+  email            String?
+  website          String?
+  principalName    String?
+  operationalHours String?
+  attendanceRules  Json?
+  gradingRules     Json?
+  libraryRules     Json?
+  updatedAt        DateTime @updatedAt
+
+  @@map("school_settings")
+}
+
+model AcademicYear {
+  id             String           @id @default(uuid())
+  name           String           // e.g. "2026/2027"
+  semester       Semester         @default(GANJIL)
+  isActive       Boolean          @default(false)
+  startDate      DateTime?
+  endDate        DateTime?
+  classes        Class[]
+  schedules      Schedule[]
+  gradeItems     GradeItem[]
+  classStudents  ClassStudent[]
+  teacherSubject TeacherSubject[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([name, semester])
+  @@map("academic_years")
+}
+
+// ----------------------------------------------------
+// 3. DATA GURU & KEPEGAWAIAN
+// ----------------------------------------------------
+
+enum Gender {
+  LAKI_LAKI
+  PEREMPUAN
+}
+
+enum TeacherStatus {
+  PNS
+  PPPK
+  GURU_TETAP_YAYASAN
+  GURU_HONORER
+}
+
+model Teacher {
+  id               String              @id @default(uuid())
+  userId           String?             @unique
+  user             User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  nip              String?             @unique
+  nuptk            String?             @unique
+  name             String
+  gender           Gender
+  birthPlace       String?
+  birthDate        DateTime?
+  address          String?
+  phone            String?
+  email            String?
+  education        String?
+  position         String?
+  employmentStatus TeacherStatus       @default(GURU_HONORER)
+  joinDate         DateTime?
+  photoUrl         String?
+  isActive         Boolean             @default(true)
+  classesAdvised   Class[]             @relation("ClassHomeroomTeacher")
+  schedules        Schedule[]
+  attendances      TeacherAttendance[]
+  gradeItems       GradeItem[]
+  teacherSubjects  TeacherSubject[]
+  libraryMember    LibraryMember?
+  studentAttendances StudentAttendance[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@map("teachers")
+}
+
+model TeacherAttendance {
+  id          String   @id @default(uuid())
+  teacherId   String
+  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+  checkInTime DateTime?
+  checkOutTime DateTime?
+  status      AttendanceStatus @default(HADIR)
+  notes       String?
+  recordedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@unique([teacherId, date])
+  @@map("teacher_attendance")
+}
+
+// ----------------------------------------------------
+// 4. KELAS, SISWA, & ORANG TUA/WALI
+// ----------------------------------------------------
+
+model Class {
+  id                String              @id @default(uuid())
+  name              String              // e.g. "X IPA 1"
+  gradeLevel        Int                 // e.g. 10, 11, 12
+  major             String?             // e.g. "IPA", "IPS", "Teknik Komputer"
+  academicYearId    String
+  academicYear      AcademicYear        @relation(fields: [academicYearId], references: [id])
+  homeroomTeacherId String?
+  homeroomTeacher   Teacher?            @relation("ClassHomeroomTeacher", fields: [homeroomTeacherId], references: [id], onDelete: SetNull)
+  room              String?
+  capacity          Int                 @default(36)
+  isActive          Boolean             @default(true)
+  students          Student[]
+  classStudents     ClassStudent[]
+  schedules         Schedule[]
+  attendances       StudentAttendance[]
+  gradeItems        GradeItem[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@map("classes")
+}
+
+enum StudentStatus {
+  AKTIF
+  LULUS
+  PINDAH
+  KELUAR
+  DROPOUT
+}
+
+model Student {
+  id            String              @id @default(uuid())
+  userId        String?             @unique
+  user          User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  nis           String              @unique
+  nisn          String?             @unique
+  name          String
+  gender        Gender
+  birthPlace    String?
+  birthDate     DateTime?
+  religion      String?
+  address       String?
+  phone         String?
+  email         String?
+  entryYear     Int
+  status        StudentStatus       @default(AKTIF)
+  photoUrl      String?
+  notes         String?
+  classId       String?
+  class         Class?              @relation(fields: [classId], references: [id], onDelete: SetNull)
+  parents       StudentParent[]
+  classStudents ClassStudent[]
+  attendances   StudentAttendance[]
+  grades        Grade[]
+  achievements  Achievement[]
+  libraryMember LibraryMember?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@map("students")
+}
+
+model ClassStudent {
+  id             String       @id @default(uuid())
+  classId        String
+  studentId      String
+  academicYearId String
+  status         StudentStatus @default(AKTIF)
+  class          Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId, academicYearId])
+  @@map("class_students")
+}
+
+model Parent {
+  id           String          @id @default(uuid())
+  userId       String?         @unique
+  user         User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name         String
+  relationship String          // e.g. "Ayah", "Ibu", "Wali"
+  phone        String
+  email        String?
+  address      String?
+  occupation   String?
+  students     StudentParent[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@map("parents")
+}
+
+model StudentParent {
+  id        String  @id @default(uuid())
+  studentId String
+  parentId  String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parent    Parent  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, parentId])
+  @@map("student_parents")
+}
+
+// ----------------------------------------------------
+// 5. MATA PELAJARAN & JADWAL
+// ----------------------------------------------------
+
+model Subject {
+  id             String           @id @default(uuid())
+  code           String           @unique
+  name           String
+  category       String?          // e.g. "Muatan Nasional", "Peminatan"
+  gradeLevel     Int?
+  isActive       Boolean          @default(true)
+  teacherSubject TeacherSubject[]
+  schedules      Schedule[]
+  gradeItems     GradeItem[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@map("subjects")
+}
+
+model TeacherSubject {
+  id             String       @id @default(uuid())
+  teacherId      String
+  subjectId      String
+  academicYearId String
+  teacher        Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId, academicYearId])
+  @@map("teacher_subjects")
+}
+
+enum DayOfWeek {
+  SENIN
+  SELASA
+  RABU
+  KAMIS
+  JUMAT
+  SABTU
+}
+
+model Schedule {
+  id             String              @id @default(uuid())
+  academicYearId String
+  classId        String
+  subjectId      String
+  teacherId      String
+  dayOfWeek      DayOfWeek
+  startTime      String              // e.g. "07:30"
+  endTime        String              // e.g. "09:00"
+  room           String?
+  academicYear   AcademicYear        @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  class          Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject        Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher        Teacher             @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  attendances    StudentAttendance[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@map("schedules")
+}
+
+// ----------------------------------------------------
+// 6. ABSENSI SISWA
+// ----------------------------------------------------
+
+enum AttendanceStatus {
+  HADIR
+  SAKIT
+  IZIN
+  ALPA
+  DISPENSASI
+}
+
+model StudentAttendance {
+  id         String           @id @default(uuid())
+  studentId  String
+  classId    String
+  scheduleId String?
+  teacherId  String?
+  date       DateTime         @db.Date
+  status     AttendanceStatus @default(HADIR)
+  notes      String?
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class      Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  schedule   Schedule?        @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  teacher    Teacher?         @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([studentId, classId, date, scheduleId])
+  @@map("student_attendance")
+}
+
+// ----------------------------------------------------
+// 7. PENILAIAN & PRESTASI
+// ----------------------------------------------------
+
+enum AssessmentType {
+  TUGAS
+  KUIS
+  ULANGAN
+  UTS
+  UAS
+  PRAKTIK
+  PROYEK
+  SIKAP
+}
+
+model GradeItem {
+  id             String         @id @default(uuid())
+  name           String         // e.g. "Tugas 1 - Aljabar"
+  type           AssessmentType @default(TUGAS)
+  weight         Float          @default(1.0)
+  maxScore       Float          @default(100.0)
+  academicYearId String
+  subjectId      String
+  classId        String
+  teacherId      String
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  subject        Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class          Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher        Teacher        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  grades         Grade[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@map("grade_items")
+}
+
+model Grade {
+  id          String    @id @default(uuid())
+  studentId   String
+  gradeItemId String
+  score       Float
+  notes       String?
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  gradeItem   GradeItem @relation(fields: [gradeItemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([studentId, gradeItemId])
+  @@map("grades")
+}
+
+enum AchievementCategory {
+  AKADEMIK
+  OLAHRAGA
+  SENI
+  KEAGAMAAN
+  SAINS_TEKNOLOGI
+  ORGANISASI
+  LAINNYA
+}
+
+enum AchievementLevel {
+  SEKOLAH
+  KECAMATAN
+  KABUPATEN_KOTA
+  PROVINSI
+  NASIONAL
+  INTERNASIONAL
+}
+
+model Achievement {
+  id          String              @id @default(uuid())
+  studentId   String
+  title       String
+  category    AchievementCategory @default(AKADEMIK)
+  level       AchievementLevel    @default(SEKOLAH)
+  rank        String              // e.g. "Juara 1", "Medali Emas"
+  date        DateTime            @db.Date
+  organizer   String
+  description String?
+  proofUrl    String?
+  isVerified  Boolean             @default(false)
+  isFeatured  Boolean             @default(false)
+  student     Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@map("achievements")
+}
+
+// ----------------------------------------------------
+// 8. PERPUSTAKAAN SEKOLAH
+// ----------------------------------------------------
+
+model BookCategory {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  books       Book[]
+  createdAt   DateTime @default(now())
+
+  @@map("book_categories")
+}
+
+model Book {
+  id              String         @id @default(uuid())
+  isbn            String?        @unique
+  title           String
+  author          String
+  publisher       String?
+  publishYear     Int?
+  categoryId      String
+  category        BookCategory   @relation(fields: [categoryId], references: [id])
+  rackLocation    String?
+  totalCopies     Int            @default(1)
+  availableCopies Int            @default(1)
+  coverUrl        String?
+  condition       String?        @default("Baik")
+  description     String?
+  copies          BookCopy[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("books")
+}
+
+enum BookCopyStatus {
+  TERSEDIA
+  DIPINJAM
+  HILANG
+  RUSAK
+}
+
+model BookCopy {
+  id             String          @id @default(uuid())
+  bookId         String
+  copyCode       String          @unique // e.g. "BK-001-01"
+  condition      String          @default("Baik")
+  status         BookCopyStatus  @default(TERSEDIA)
+  book           Book            @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  borrowingItems BorrowingItem[]
+  createdAt      DateTime        @default(now())
+
+  @@map("book_copies")
+}
+
+enum MemberType {
+  SISWA
+  GURU
+  STAF
+}
+
+model LibraryMember {
+  id           String        @id @default(uuid())
+  memberNumber String        @unique
+  userId       String?       @unique
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  studentId    String?       @unique
+  student      Student?      @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  teacherId    String?       @unique
+  teacher      Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  type         MemberType    @default(SISWA)
+  isActive     Boolean       @default(true)
+  borrowings   Borrowing[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("library_members")
+}
+
+enum BorrowingStatus {
+  DIPINJAM
+  DIKEMBALIKAN
+  TERLAMBAT
+  HILANG
+  RUSAK
+}
+
+model Borrowing {
+  id              String          @id @default(uuid())
+  borrowingNumber String          @unique
+  memberId        String
+  member          LibraryMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  borrowDate      DateTime        @db.Date
+  dueDate         DateTime        @db.Date
+  returnDate      DateTime?       @db.Date
+  status          BorrowingStatus @default(DIPINJAM)
+  fineAmount      Float           @default(0.0)
+  notes           String?
+  items           BorrowingItem[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("borrowings")
+}
+
+model BorrowingItem {
+  id          String          @id @default(uuid())
+  borrowingId String
+  bookCopyId  String
+  borrowing   Borrowing       @relation(fields: [borrowingId], references: [id], onDelete: Cascade)
+  bookCopy    BookCopy        @relation(fields: [bookCopyId], references: [id], onDelete: Cascade)
+  returnDate  DateTime?       @db.Date
+  status      BorrowingStatus @default(DIPINJAM)
+
+  @@map("borrowing_items")
+}
+
+// ----------------------------------------------------
+// 9. PENGUMUMAN & NOTIFIKASI
+// ----------------------------------------------------
+
+model Announcement {
+  id            String    @id @default(uuid())
+  title         String
+  content       String
+  attachmentUrl String?
+  targetRole    String?   // e.g. "ALL", "GURU", "SISWA", "ORANG_TUA"
+  targetClassId String?
+  publishDate   DateTime  @default(now())
+  expiryDate    DateTime?
+  authorName    String?
+  isPublished   Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("announcements")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // e.g. "ANNOUNCEMENT", "GRADE", "ATTENDANCE", "LIBRARY"
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}

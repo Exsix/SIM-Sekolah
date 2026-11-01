@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf8f5;
+  --foreground: #1c2430;
+  --font-sans: var(--font-sans), 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-serif), 'Lora', 'Georgia', serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+/* Scholastic paper & subtle institutional textures */
+.bg-scholastic-cream {
+  background-color: #faf8f5;
+}
+
+.bg-scholastic-pattern {
+  background-color: #faf8f5;
+  background-image: radial-gradient(#d4af3720 1px, transparent 1px), radial-gradient(#0c23400d 1px, #faf8f5 1px);
+  background-size: 32px 32px;
+  background-position: 0 0, 16px 16px;
+}
+
+.bg-navy-regal {
+  background: linear-gradient(145deg, #091a2f 0%, #0d233f 50%, #061220 100%);
+}
+
+.bg-navy-deep {
+  background: #091726;
+}
+
+.bg-gold-metallic {
+  background: linear-gradient(135deg, #c59b27 0%, #e0b84c 50%, #b3861b 100%);
+}
+
+.border-gold-subtle {
+  border-color: rgba(212, 175, 55, 0.3);
+}
+
+/* Print Friendly Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
