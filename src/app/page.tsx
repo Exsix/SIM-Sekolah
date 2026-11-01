@@ -78,7 +78,7 @@ export default async function HomePage() {
   const schoolHours = setting?.operationalHours || 'Senin - Jumat: 06:45 - 15:45 WIB';
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-slate-800 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#FAF8F5] text-slate-800 flex flex-col font-sans overflow-x-hidden">
       {/* 1. KOP RESMI DINAS & IDENTITAS PEMERINTAH */}
       <div className="bg-[#091726] text-slate-300 text-xs py-2 px-4 sm:px-6 lg:px-8 border-b border-amber-500/30">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2.5">
